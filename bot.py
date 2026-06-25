@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import ChatMemberUpdated, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -32,12 +33,16 @@ dp = Dispatcher(storage=MemoryStorage())
 db = Database()
 validator = ChannelValidator(os.getenv("CHANNEL_USERNAME", "Nightly_Wisdom"))
 
+# Admin user ID from environment
+ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
+
 # States
 class UserState(StatesGroup):
     waiting_for_language = State()
     waiting_for_translation_language = State()
     waiting_for_meaning_language = State()
     translating = State()
+    waiting_for_contribution = State()
 
 # Temporary storage for message IDs (in production, use Redis or similar)
 temp_message_storage = {}
@@ -82,6 +87,17 @@ def get_translation_language_keyboard(available_languages: list):
         )
         keyboard.inline_keyboard.append([button])
     
+    return keyboard
+
+def get_meaning_language_keyboard():
+    """Create inline keyboard for meaning language selection (all 3 languages)."""
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=get_language_name("uz"), callback_data="meaning_lang_uz")],
+            [types.InlineKeyboardButton(text=get_language_name("ru"), callback_data="meaning_lang_ru")],
+            [types.InlineKeyboardButton(text=get_language_name("en"), callback_data="meaning_lang_en")]
+        ]
+    )
     return keyboard
 
 def get_invalid_channel_keyboard():
@@ -150,6 +166,100 @@ async def cmd_help(message: types.Message):
     help_text = get_text(language, "help_text")
     await message.answer(help_text)
 
+@dp.message(Command("support"))
+async def cmd_support(message: types.Message):
+    """Handle /support command - show support information."""
+    user_id = message.from_user.id
+    language = db.get_user_language(user_id) or "en"
+    
+    support_text = get_text(language, "support_text")
+    await message.answer(support_text)
+
+@dp.message(Command("contribution"))
+async def cmd_contribution(message: types.Message, state: FSMContext):
+    """Handle /contribution command - start contribution process."""
+    user_id = message.from_user.id
+    language = db.get_user_language(user_id) or "en"
+    
+    contribution_text = get_text(language, "contribution_text")
+    await message.answer(contribution_text)
+    await state.set_state(UserState.waiting_for_contribution)
+
+@dp.message(UserState.waiting_for_contribution)
+async def process_contribution(message: types.Message, state: FSMContext):
+    """Process contribution submissions."""
+    user_id = message.from_user.id
+    language = db.get_user_language(user_id) or "en"
+    
+    # Filter out unwanted content types
+    if message.voice:
+        await message.answer("Voice messages are not accepted. Please send text, photo, or video.")
+        return
+    
+    if message.sticker:
+        await message.answer("Stickers are not accepted. Please send text, photo, or video.")
+        return
+    
+    if message.animation:  # GIFs
+        await message.answer("GIFs are not accepted. Please send text, photo, or video.")
+        return
+    
+    # Check if ADMIN_USER_ID is set
+    if ADMIN_USER_ID == 0:
+        await message.answer("Admin ID not configured. Please contact the bot administrator.")
+        await state.clear()
+        return
+    
+    # Forward contribution to admin
+    try:
+        # Determine content type and content
+        content_type = None
+        content = ""
+        
+        if message.text:
+            content_type = "text"
+            content = message.text
+        elif message.photo:
+            content_type = "photo"
+            content = f"[Photo: {message.caption or 'No caption'}]"
+        elif message.video:
+            content_type = "video"
+            content = f"[Video: {message.caption or 'No caption'}]"
+        else:
+            await message.answer("This content type is not supported. Please send text, photo, or video.")
+            await state.clear()
+            return
+        
+        # Save to database
+        db.save_contribution(user_id, content_type, content)
+        
+        # Prepare contribution info
+        contribution_info = f"📨 New Contribution\n\nUser: @{message.from_user.username or 'No username'}\nTelegram ID: {user_id}\n"
+        
+        # Determine content type for display
+        if message.text:
+            contribution_info += f"Type: Text\n\nContent:\n{message.text}"
+            await bot.send_message(ADMIN_USER_ID, contribution_info)
+        elif message.photo:
+            contribution_info += "Type: Photo"
+            await bot.send_message(ADMIN_USER_ID, contribution_info)
+            await message.forward(ADMIN_USER_ID)
+        elif message.video:
+            contribution_info += "Type: Video"
+            await bot.send_message(ADMIN_USER_ID, contribution_info)
+            await message.forward(ADMIN_USER_ID)
+        
+        # Send confirmation to user
+        await message.answer("Thank you for your contribution! We will review it and get back to you if it's approved.")
+        await state.clear()
+        
+        logger.info(f"Contribution from user {user_id} forwarded to admin {ADMIN_USER_ID}")
+        
+    except Exception as e:
+        logger.error(f"Error forwarding contribution: {e}")
+        await message.answer("An error occurred while processing your contribution. Please try again later.")
+        await state.clear()
+
 @dp.message(Command("meaning"))
 async def cmd_meaning(message: types.Message):
     """Handle /meaning command - admin only (skeleton for now)."""
@@ -162,6 +272,31 @@ async def cmd_meaning(message: types.Message):
     
     # Skeleton implementation - will be expanded in future stages
     await message.answer("Meaning management feature will be implemented in future stages.")
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    """Handle /admin command - show contribution statistics."""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    if not db.is_admin(user_id):
+        await message.answer("This command is only available to administrators.")
+        return
+    
+    # Get contribution statistics
+    stats = db.get_contribution_stats()
+    
+    # Format statistics message
+    stats_message = f"""📊 Contribution Statistics
+
+Total Contributions: {stats['total']}
+
+✅ Approved: {stats['approved']}
+❌ Rejected: {stats['rejected']}
+📚 Already Exists: {stats['already_exists']}
+⏳ Pending: {stats['pending']}"""
+    
+    await message.answer(stats_message)
 
 # URL and forwarded message handlers
 @dp.message()
@@ -242,6 +377,54 @@ async def process_message(message: types.Message, state: FSMContext):
         # Unknown message type
         await message.answer("Please send a valid channel URL or forward a message from the channel.")
 
+# Channel post handler for automatic indexing (Stage 8)
+@dp.channel_post()
+async def handle_channel_post(message: types.Message):
+    """Automatically index new channel posts."""
+    # Only process posts from the Nightly Wisdom channel
+    if message.chat.username != validator.channel_username:
+        return
+    
+    message_id = message.message_id
+    content = None
+    media_type = "text"
+    
+    # Extract content based on message type
+    if message.text:
+        content = message.text
+    elif message.caption:
+        content = message.caption
+        if message.photo:
+            media_type = "photo"
+        elif message.video:
+            media_type = "video"
+        elif message.audio:
+            media_type = "audio"
+        elif message.document:
+            media_type = "document"
+    else:
+        # No text content, just media
+        media_type = "unknown"
+        content = ""
+    
+    # Detect language if there's text content
+    language = None
+    if content:
+        try:
+            detector = get_language_detector()
+            language = detector.detect(content)
+        except Exception as e:
+            logger.error(f"Error detecting language for message {message_id}: {e}")
+            language = "unknown"
+    
+    # Save to database
+    if content or media_type != "text":
+        success = db.save_quote(message_id, content or "", language or "unknown", media_type)
+        if success:
+            logger.info(f"Indexed channel post {message_id}: {media_type}, language: {language}")
+        else:
+            logger.error(f"Failed to index channel post {message_id}")
+
 # Callback query handlers
 @dp.callback_query(lambda c: c.data.startswith("action_"))
 async def process_action_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -277,8 +460,64 @@ async def process_action_callback(callback: types.CallbackQuery, state: FSMConte
         await state.update_data(detected_language=detected_language)
         
     elif action == "meaning":
-        # Stage 2: Just acknowledge the action (Stage 3 will implement this)
-        await callback.message.answer(f"Meaning feature will be implemented in Stage 3. (Message ID: {message_id})")
+        # Show language selection for meaning
+        select_text = get_text(language, "select_meaning_language")
+        await callback.message.answer(
+            select_text,
+            reply_markup=get_meaning_language_keyboard()
+        )
+    
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("meaning_lang_"))
+async def process_meaning_language_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Process meaning language selection."""
+    user_id = callback.from_user.id
+    interface_language = db.get_user_language(user_id) or "en"
+    target_language = callback.data.split("_")[2]
+    
+    # Get stored message ID and content
+    message_id = temp_message_storage.get(user_id)
+    message_content = temp_message_content.get(user_id)
+    
+    if not message_id or not message_content:
+        await callback.answer("Error: Message content not found. Please try again.")
+        return
+    
+    # Show processing message
+    processing_message = await callback.message.answer("Generating meaning... ⏳")
+    
+    try:
+        # First check if custom meaning exists in database
+        custom_meaning = db.get_meaning(message_id, target_language)
+        
+        if custom_meaning:
+            # Delete processing message
+            await processing_message.delete()
+            
+            # Send custom meaning
+            await callback.message.answer(f"Meaning:\n\n{custom_meaning}")
+            logger.info(f"Retrieved custom meaning for message {message_id} in {target_language}")
+        else:
+            # Generate meaning using Gemini
+            gemini_service = get_gemini_service()
+            generated_meaning = await gemini_service.generate_meaning(message_content, target_language)
+            
+            if generated_meaning:
+                # Delete processing message
+                await processing_message.delete()
+                
+                # Send generated meaning
+                await callback.message.answer(generated_meaning)
+                logger.info(f"Generated meaning for message {message_id} in {target_language}")
+            else:
+                await processing_message.delete()
+                await callback.message.answer("Failed to generate meaning. Please try again.")
+            
+    except Exception as e:
+        logger.error(f"Meaning generation error: {e}")
+        await processing_message.delete()
+        await callback.message.answer("An error occurred while generating meaning. Please try again.")
     
     await callback.answer()
 
@@ -325,6 +564,44 @@ async def process_translation_language_callback(callback: types.CallbackQuery, s
         await callback.message.answer("An error occurred during translation. Please try again.")
     
     await callback.answer()
+
+# Inline query handler for Stage 4 (Inline Quote Search)
+@dp.inline_query()
+async def handle_inline_query(inline_query: InlineQuery):
+    """Handle inline search queries from users."""
+    query = inline_query.query.strip()
+    user_id = inline_query.from_user.id
+    
+    if not query:
+        # Return empty results if query is empty
+        await inline_query.answer([])
+        return
+    
+    # Search quotes in database
+    results = db.search_quotes(query, limit=5)
+    
+    inline_results = []
+    for message_id, content, language in results:
+        # Truncate content for display
+        display_content = content[:100] + "..." if len(content) > 100 else content
+        
+        # Create inline result with the quote content and action buttons
+        result = InlineQueryResultArticle(
+            id=str(message_id),
+            title=display_content,
+            description=f"Language: {language.upper()}",
+            input_message_content=InputTextMessageContent(
+                message_text=content
+            ),
+            reply_markup=get_action_keyboard()
+        )
+        inline_results.append(result)
+        
+        # Store message ID and content for the user (for button handling)
+        temp_message_storage[user_id] = message_id
+        temp_message_content[user_id] = content
+    
+    await inline_query.answer(inline_results, cache_time=300)
 
 async def main():
     """Start the bot."""

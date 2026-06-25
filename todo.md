@@ -513,3 +513,530 @@ Voice messages are excluded.
 * Logging enabled
 * Error handling implemented
 * Easy to extend with future features
+
+
+Stage 4 — Inline Quote Search
+Goal
+
+Allow users to search Nightly Wisdom quotes directly from any Telegram chat.
+
+User Flow
+
+User types:
+
+@Nightly_Wisdom_Bot success
+
+Bot shows matching quotes from the Nightly Wisdom database.
+
+Example:
+
+Success is not final, failure is not fatal...
+
+When clicked:
+
+Success is not final, failure is not fatal.
+— Winston Churchill
+
+[Translate]
+[Meaning]
+Requirements
+Enable Telegram Inline Mode.
+Store all channel quotes in the database.
+Search by:
+Keywords
+Partial words
+Quote text
+Return top matching results.
+Database Addition
+quotes
+-------
+message_id
+content
+language
+created_at
+Success Criteria
+User can search from any chat.
+Results appear instantly.
+No need to open the bot first.
+Stage 5 — Support System
+New Command
+/support
+User Flow
+
+User:
+
+/ support
+
+Bot:
+
+Please take a screenshot of the problem and send it to @akkkkbar.
+You may also include a short description of the issue.
+Future Upgrade
+
+Instead of sending users to your username:
+
+/support
+
+Bot asks:
+
+Please describe your problem or send a screenshot.
+
+Everything gets forwarded to you automatically.
+
+This is more professional.
+
+Stage 6 — Community Contributions
+New Command
+/contribution
+User Flow
+
+User:
+
+/contribution
+
+Bot:
+
+Send your quote, photo, or video.
+
+If your contribution is approved, it may be published on the Nightly Wisdom channel.
+Accepted Content
+Text
+Photo
+Video
+
+Not accepted:
+
+Voice messages
+Stickers
+GIFs
+Admin Notification
+
+When user submits:
+
+Bot forwards content to admin.
+
+Example:
+
+📨 New ContributionStage 4 — Inline Quote Search
+Goal
+
+Allow users to search Nightly Wisdom quotes directly from any Telegram chat.
+
+User Flow
+
+User types:
+
+@Nightly_Wisdom_Bot success
+
+Bot shows matching quotes from the Nightly Wisdom database.
+
+Example:
+
+Success is not final, failure is not fatal...
+
+When clicked:
+
+Success is not final, failure is not fatal.
+— Winston Churchill
+
+[Translate]
+[Meaning]
+Requirements
+Enable Telegram Inline Mode.
+Store all channel quotes in the database.
+Search by:
+Keywords
+Partial words
+Quote text
+Return top matching results.
+Database Addition
+quotes
+-------
+message_id
+content
+language
+created_at
+Success Criteria
+User can search from any chat.
+Results appear instantly.
+No need to open the bot first.
+Stage 5 — Support System
+New Command
+/support
+User Flow
+
+User:
+
+/ support
+
+Bot:
+
+Please take a screenshot of the problem and send it to @akkkkbar.
+You may also include a short description of the issue.
+Future Upgrade
+
+Instead of sending users to your username:
+
+/support
+
+Bot asks:
+
+Please describe your problem or send a screenshot.
+
+Everything gets forwarded to you automatically.
+
+This is more professional.
+
+Stage 6 — Community Contributions
+New Command
+/contribution
+User Flow
+
+User:
+
+/contribution
+
+Bot:
+
+Send your quote, photo, or video.
+
+If your contribution is approved, it may be published on the Nightly Wisdom channel.
+Accepted Content
+Text
+Photo
+Video
+
+Not accepted:
+
+Voice messages
+Stickers
+GIFs
+Admin Notification
+
+When user submits:
+
+Bot forwards content to admin.
+
+Example:
+
+📨 New Contribution
+
+User:
+@username
+
+Telegram ID:
+123456789
+
+Type:
+Text
+
+Content:
+Success is not final...
+
+For photos/videos:
+
+Forward the original media.
+
+Admin Buttons
+
+Under each submission:
+
+[✅ Approve]
+[❌ Reject]
+[📚 Already Exists]
+Approve Flow
+
+Admin clicks:
+
+Approve
+
+User receives:
+
+Thank you for your contribution.
+
+We reviewed it and loved it. It may appear on our channel soon.
+Reject Flow
+
+Admin clicks:
+
+Reject
+
+User receives:
+
+Thank you for your contribution.
+
+Unfortunately, we found it unsuitable for our channel.
+Already Exists Flow
+
+Admin clicks:
+
+Already Exists
+
+User receives:
+
+Thank you for your contribution.
+
+The quote already exists in our collection.
+Stage 7 — Contribution Dashboard
+New Admin Command
+/admin
+
+Statistics:
+
+Total Contributions: 352
+
+Approved: 201
+Rejected: 94
+Already Exists: 57
+
+Pending: 0
+
+Useful once your channel grows.
+
+Stage 8 — Automatic Quote Indexing
+
+Since the bot is already an admin of the channel:
+
+Every new post should automatically be saved:
+
+Channel Post
+      ↓
+Bot receives update
+      ↓
+Database
+
+Store:
+
+Message ID
+Quote text
+Language
+Media type
+Date
+
+This stage is important because it powers the inline search feature from Stage 4.
+
+Recommended Order
+Finish Stage 3 (Meaning)
+Stage 8 (Automatic Quote Indexing)
+Stage 4 (Inline Search)
+Stage 5 (Support)
+Stage 6 (Contributions)
+Stage 7 (Admin Dashboard)
+
+The automatic indexing stage should come before the search engine, otherwise the bot won't have a quote database to search through.
+
+User:
+@username
+
+Telegram ID:
+123456789
+
+Type:
+Text
+
+Content:
+Success is not final...
+
+For photos/videos:
+
+Forward the original media.
+
+Admin Buttons
+
+Under each submission:
+
+[✅ Approve]
+[❌ Reject]
+[📚 Already Exists]
+Approve Flow
+
+Admin clicks:
+
+Approve
+
+User receives:
+
+Thank you for your contribution.
+
+We reviewed it and loved it. It may appear on our channel soon.
+Reject Flow
+
+Admin clicks:Stage 4 — Inline Quote Search
+Goal
+
+Allow users to search Nightly Wisdom quotes directly from any Telegram chat.
+
+User Flow
+
+User types:
+
+@Nightly_Wisdom_Bot success
+
+Bot shows matching quotes from the Nightly Wisdom database.
+
+Example:
+
+Success is not final, failure is not fatal...
+
+When clicked:
+
+Success is not final, failure is not fatal.
+— Winston Churchill
+
+[Translate]
+[Meaning]
+Requirements
+Enable Telegram Inline Mode.
+Store all channel quotes in the database.
+Search by:
+Keywords
+Partial words
+Quote text
+Return top matching results.
+Database Addition
+quotes
+-------
+message_id
+content
+language
+created_at
+Success Criteria
+User can search from any chat.
+Results appear instantly.
+No need to open the bot first.
+Stage 5 — Support System
+New Command
+/support
+User Flow
+
+User:
+
+/ support
+
+Bot:
+
+Please take a screenshot of the problem and send it to @akkkkbar.
+You may also include a short description of the issue.
+
+
+Stage 6 — Community Contributions
+New Command
+/contribution
+User Flow
+
+User:
+
+/contribution
+
+Bot:
+
+Send your quote, photo, or video.
+
+If your contribution is approved, it may be published on the Nightly Wisdom channel.
+Accepted Content
+Text
+Photo
+Video
+
+Not accepted:
+
+Voice messages
+Stickers
+GIFs
+Admin Notification
+
+When user submits:
+
+Bot forwards content to admin.
+
+Example:
+
+📨 New Contribution
+
+User:
+@username
+
+Telegram ID:
+123456789
+
+Type:
+Text
+
+Content:
+Success is not final...
+
+For photos/videos:
+
+Forward the original media.
+
+Admin Buttons
+
+Under each submission:
+
+[✅ Approve]
+[❌ Reject]
+[📚 Already Exists]
+Approve Flow
+
+Admin clicks:
+
+Approve
+
+User receives:
+
+Thank you for your contribution.
+
+We reviewed it and loved it. It may appear on our channel soon.
+Reject Flow
+
+Admin clicks:
+
+Reject
+
+User receives:
+
+Thank you for your contribution.
+
+Unfortunately, we found it unsuitable for our channel.
+Already Exists Flow
+
+Admin clicks:
+
+Already Exists
+
+User receives:
+
+Thank you for your contribution.
+
+The quote already exists in our collection.
+
+Stage 7 — Automatic Quote Indexing
+
+Since the bot is already an admin of the channel:
+
+Every new post should automatically be saved:
+
+Channel Post
+      ↓
+Bot receives update
+      ↓
+Database
+
+Store:
+
+Message ID
+Quote text
+Language
+Media type
+Date
+
+This stage is important because it powers the inline search feature from Stage 4.
+
+Recommended Order
+Finish Stage 3 (Meaning)
+Stage 7 (Automatic Quote Indexing)
+Stage 4 (Inline Search)
+Stage 5 (Support)
+Stage 6 (Contributions)
+
+The automatic indexing stage should come before the search engine, otherwise the bot won't have a quote database to search through.
