@@ -42,11 +42,12 @@ Requirements:
 - Preserve the original meaning
 - Maintain the quote style and tone
 - Return ONLY the translation, no explanations
+- For Uzbek: Use proper Uzbek Latin script with apostrophes (o', sh, ch, ng, g', etc.)
 
 Text to translate:
 {text}"""
             
-            logger.info(f"Requesting translation to {target_lang_name}")
+            logger.info(f"Requesting translation to {target_lang_name} (target_language: {target_language})")
             response = self.model.generate_content(prompt)
             
             if response.text:

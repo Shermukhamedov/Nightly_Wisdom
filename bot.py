@@ -163,8 +163,12 @@ async def cmd_help(message: types.Message):
     user_id = message.from_user.id
     language = db.get_user_language(user_id) or "en"
     
-    help_text = get_text(language, "help_text")
-    await message.answer(help_text)
+    # Create clickable channel link
+    channel_link = f"https://t.me/{validator.channel_username}"
+    help_text = f"1) Go to our channel [Nightly Wisdom]({channel_link}) and forward quote then select translation or meaning"
+    
+    # Parse as markdown to enable the link
+    await message.answer(help_text, parse_mode="Markdown")
 
 @dp.message(Command("support"))
 async def cmd_support(message: types.Message):
@@ -272,31 +276,6 @@ async def cmd_meaning(message: types.Message):
     
     # Skeleton implementation - will be expanded in future stages
     await message.answer("Meaning management feature will be implemented in future stages.")
-
-@dp.message(Command("admin"))
-async def cmd_admin(message: types.Message):
-    """Handle /admin command - show contribution statistics."""
-    user_id = message.from_user.id
-    
-    # Check if user is admin
-    if not db.is_admin(user_id):
-        await message.answer("This command is only available to administrators.")
-        return
-    
-    # Get contribution statistics
-    stats = db.get_contribution_stats()
-    
-    # Format statistics message
-    stats_message = f"""📊 Contribution Statistics
-
-Total Contributions: {stats['total']}
-
-✅ Approved: {stats['approved']}
-❌ Rejected: {stats['rejected']}
-📚 Already Exists: {stats['already_exists']}
-⏳ Pending: {stats['pending']}"""
-    
-    await message.answer(stats_message)
 
 # URL and forwarded message handlers
 @dp.message()
@@ -495,8 +474,9 @@ async def process_meaning_language_callback(callback: types.CallbackQuery, state
             # Delete processing message
             await processing_message.delete()
             
-            # Send custom meaning
-            await callback.message.answer(f"Meaning:\n\n{custom_meaning}")
+            # Send custom meaning with localized label
+            meaning_label = get_text(interface_language, "meaning")
+            await callback.message.answer(f"{meaning_label}:\n\n{custom_meaning}")
             logger.info(f"Retrieved custom meaning for message {message_id} in {target_language}")
         else:
             # Generate meaning using Gemini
@@ -549,8 +529,9 @@ async def process_translation_language_callback(callback: types.CallbackQuery, s
             # Delete processing message
             await processing_message.delete()
             
-            # Send translation
-            await callback.message.answer(f"Translation:\n\n{translated_text}")
+            # Send translation with localized label
+            translation_label = get_text(interface_language, "translation")
+            await callback.message.answer(f"{translation_label}:\n\n{translated_text}")
             
             # Note: Interface language remains unchanged as per requirements
             logger.info(f"Translation successful for user {user_id}: {detected_language} -> {target_language}")
