@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from database import Database
 from languages import LANGUAGES, get_text, get_language_name, LANGUAGE_CODES
 from channel_validator import ChannelValidator
+from gemini_service import get_gemini_service
+from language_detector import get_language_detector
 
 # Load environment variables
 load_dotenv()
@@ -35,9 +37,11 @@ class UserState(StatesGroup):
     waiting_for_language = State()
     waiting_for_translation_language = State()
     waiting_for_meaning_language = State()
+    translating = State()
 
 # Temporary storage for message IDs (in production, use Redis or similar)
 temp_message_storage = {}
+temp_message_content = {}  # Store message content for translation
 
 def get_language_keyboard():
     """Create language selection keyboard."""
@@ -62,6 +66,22 @@ def get_action_keyboard():
             ]
         ]
     )
+    return keyboard
+
+def get_translation_language_keyboard(available_languages: list):
+    """Create inline keyboard for translation language selection."""
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[]
+    )
+    
+    for lang_code in available_languages:
+        lang_name = get_language_name(lang_code)
+        button = types.InlineKeyboardButton(
+            text=lang_name,
+            callback_data=f"trans_lang_{lang_code}"
+        )
+        keyboard.inline_keyboard.append([button])
+    
     return keyboard
 
 def get_invalid_channel_keyboard():
@@ -154,25 +174,65 @@ async def process_message(message: types.Message, state: FSMContext):
         await message.answer("Please select a language first using /start")
         return
     
+    message_content = None
+    message_id = None
+    
     # Check if it's a URL
     if message.text and message.text.startswith("https://t.me/"):
-        is_valid, message_id = validator.validate_and_extract(message.text)
+        is_valid, extracted_message_id = validator.validate_and_extract(message.text)
         
-        if is_valid and message_id:
-            # Store message ID temporarily
-            temp_message_storage[user_id] = message_id
-            await message.answer("Please select an action:", reply_markup=get_action_keyboard())
+        if is_valid and extracted_message_id:
+            message_id = extracted_message_id
+            # For URLs, we need to fetch the message content from Telegram
+            try:
+                # Try to fetch the message from the channel
+                channel_message = await bot.get_message(
+                    chat_id=validator.channel_username,
+                    message_id=message_id
+                )
+                
+                # Get message content
+                if channel_message.text:
+                    message_content = channel_message.text
+                elif channel_message.caption:
+                    message_content = channel_message.caption
+                else:
+                    await message.answer("This message type is not supported. Please send text messages or messages with text captions.")
+                    return
+                
+                # Store message ID and content temporarily
+                temp_message_storage[user_id] = message_id
+                temp_message_content[user_id] = message_content
+                await message.answer("Please select an action:", reply_markup=get_action_keyboard())
+                
+            except Exception as e:
+                logger.error(f"Error fetching channel message: {e}")
+                await message.answer(
+                    "Couldn't fetch the message from the channel. Please forward the message instead."
+                )
+                return
         else:
             invalid_text = get_text(language, "invalid_channel")
             await message.answer(invalid_text, reply_markup=get_invalid_channel_keyboard())
     
     # Check if it's a forwarded message
     elif message.forward_from_chat:
-        is_valid, message_id = validator.validate_forwarded_message(message)
+        is_valid, extracted_message_id = validator.validate_forwarded_message(message)
         
-        if is_valid and message_id:
-            # Store message ID temporarily
+        if is_valid and extracted_message_id:
+            message_id = extracted_message_id
+            # Get the actual message content
+            if message.text:
+                message_content = message.text
+            elif message.caption:
+                message_content = message.caption
+            else:
+                await message.answer("This message type is not supported. Please send text messages or messages with text captions.")
+                return
+            
+            # Store message ID and content temporarily
             temp_message_storage[user_id] = message_id
+            temp_message_content[user_id] = message_content
             await message.answer("Please select an action:", reply_markup=get_action_keyboard())
         else:
             invalid_text = get_text(language, "invalid_channel")
@@ -190,19 +250,79 @@ async def process_action_callback(callback: types.CallbackQuery, state: FSMConte
     language = db.get_user_language(user_id) or "en"
     action = callback.data.split("_")[1]
     
-    # Get stored message ID
+    # Get stored message ID and content
     message_id = temp_message_storage.get(user_id)
+    message_content = temp_message_content.get(user_id)
     
-    if not message_id:
-        await callback.answer("Error: Message ID not found. Please try again.")
+    if not message_id or not message_content:
+        await callback.answer("Error: Message content not found. Please try again.")
         return
     
     if action == "translation":
-        # Stage 1: Just acknowledge the action
-        await callback.message.answer(f"Translation feature will be implemented in Stage 2. (Message ID: {message_id})")
+        # Detect language of the quote
+        detector = get_language_detector()
+        detected_language = detector.detect(message_content)
+        
+        # Get available translation options (exclude source language)
+        available_languages = detector.get_translation_options(detected_language)
+        
+        # Show translation language selection
+        select_text = get_text(language, "select_translation_language")
+        await callback.message.answer(
+            select_text,
+            reply_markup=get_translation_language_keyboard(available_languages)
+        )
+        
+        # Store the detected language for later use
+        await state.update_data(detected_language=detected_language)
+        
     elif action == "meaning":
-        # Stage 1: Just acknowledge the action
+        # Stage 2: Just acknowledge the action (Stage 3 will implement this)
         await callback.message.answer(f"Meaning feature will be implemented in Stage 3. (Message ID: {message_id})")
+    
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data.startswith("trans_lang_"))
+async def process_translation_language_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Process translation language selection."""
+    user_id = callback.from_user.id
+    interface_language = db.get_user_language(user_id) or "en"
+    target_language = callback.data.split("_")[2]
+    
+    # Get stored data
+    message_content = temp_message_content.get(user_id)
+    state_data = await state.get_data()
+    detected_language = state_data.get("detected_language", "en")
+    
+    if not message_content:
+        await callback.answer("Error: Message content not found. Please try again.")
+        return
+    
+    # Show processing message
+    processing_message = await callback.message.answer("Translating... ⏳")
+    
+    try:
+        # Get Gemini service and translate
+        gemini_service = get_gemini_service()
+        translated_text = await gemini_service.translate_text(message_content, target_language)
+        
+        if translated_text:
+            # Delete processing message
+            await processing_message.delete()
+            
+            # Send translation
+            await callback.message.answer(f"Translation:\n\n{translated_text}")
+            
+            # Note: Interface language remains unchanged as per requirements
+            logger.info(f"Translation successful for user {user_id}: {detected_language} -> {target_language}")
+        else:
+            await processing_message.delete()
+            await callback.message.answer("Translation failed. Please try again.")
+            
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        await processing_message.delete()
+        await callback.message.answer("An error occurred during translation. Please try again.")
     
     await callback.answer()
 
