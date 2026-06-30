@@ -29,6 +29,18 @@ export class Database {
     }
   }
 
+  async getAllUsers(): Promise<number[]> {
+    try {
+      const results = await this.db
+        .prepare('SELECT user_id FROM users')
+        .all<{ user_id: number }>();
+      return results.results?.map(r => r.user_id) || [];
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return [];
+    }
+  }
+
   async saveMeaning(messageId: number, language: string, meaning: string): Promise<boolean> {
     try {
       await this.db

@@ -50,6 +50,11 @@ export class BotHandler {
       return;
     }
 
+    if (userState === 'waiting_for_broadcast') {
+      await this.processBroadcast(message);
+      return;
+    }
+
     // Handle commands
     if (text && text.startsWith('/')) {
       await this.handleCommand(message);
@@ -116,10 +121,14 @@ export class BotHandler {
         await this.cmdHelp(message);
         break;
       case '/support':
-        await this.cmdSupport(message);
+      case '/report':
+        await this.cmdReport(message);
         break;
       case '/contribution':
         await this.cmdContribution(message);
+        break;
+      case '/message':
+        await this.cmdMessage(message);
         break;
       default:
         // Handle language selection from keyboard
@@ -157,10 +166,10 @@ export class BotHandler {
     const userId = message.from.id;
     const language = (await this.db.getUserLanguage(userId)) || 'en';
     const helpText = getText(language as LanguageCode, 'help_text');
-    await this.telegram.sendMessage(userId, helpText);
+    await this.telegram.sendMessage(userId, helpText, { parse_mode: 'HTML' });
   }
 
-  private async cmdSupport(message: any): Promise<void> {
+  private async cmdReport(message: any): Promise<void> {
     const userId = message.from.id;
     const language = (await this.db.getUserLanguage(userId)) || 'en';
     const supportText = getText(language as LanguageCode, 'support_text');
@@ -253,6 +262,74 @@ export class BotHandler {
     } catch (error) {
       console.error('Error processing contribution:', error);
       await this.telegram.sendMessage(userId, 'An error occurred while processing your contribution. Please try again later.');
+      await this.kv.clearUserState(userId);
+    }
+  }
+
+  private async cmdMessage(message: any): Promise<void> {
+    const userId = message.from.id;
+    const username = message.from.username;
+
+    // Check if user is admin (by username)
+    if (username !== 'akkkkbar') {
+      await this.telegram.sendMessage(userId, 'This command is only available to administrators.');
+      return;
+    }
+
+    await this.telegram.sendMessage(userId, 'Please send the message you want to broadcast to all users.');
+    await this.kv.setUserState(userId, 'waiting_for_broadcast');
+  }
+
+  private async processBroadcast(message: any): Promise<void> {
+    const userId = message.from.id;
+    const username = message.from.username;
+
+    // Verify admin again
+    if (username !== 'akkkkbar') {
+      await this.telegram.sendMessage(userId, 'This command is only available to administrators.');
+      await this.kv.clearUserState(userId);
+      return;
+    }
+
+    try {
+      // Get all users from database
+      const allUsers = await this.db.getAllUsers();
+
+      if (!allUsers || allUsers.length === 0) {
+        await this.telegram.sendMessage(userId, 'No users found in database.');
+        await this.kv.clearUserState(userId);
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // Broadcast message to all users
+      for (const targetUserId of allUsers) {
+        try {
+          if (message.text) {
+            await this.telegram.sendMessage(targetUserId, message.text);
+          } else if (message.photo) {
+            await this.telegram.sendPhoto(targetUserId, message.photo[0].file_id, message.caption);
+          } else if (message.video) {
+            await this.telegram.sendVideo(targetUserId, message.video.file_id, message.caption);
+          } else if (message.document) {
+            await this.telegram.sendDocument(targetUserId, message.document.file_id, message.caption);
+          } else {
+            await this.telegram.forwardMessage(targetUserId, message.chat.id, message.message_id);
+          }
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to send broadcast to user ${targetUserId}:`, error);
+          failCount++;
+        }
+      }
+
+      await this.telegram.sendMessage(userId, `Broadcast completed!\n✅ Success: ${successCount}\n❌ Failed: ${failCount}`);
+      await this.kv.clearUserState(userId);
+    } catch (error) {
+      console.error('Error broadcasting message:', error);
+      await this.telegram.sendMessage(userId, 'An error occurred while broadcasting the message. Please try again.');
       await this.kv.clearUserState(userId);
     }
   }
@@ -408,14 +485,19 @@ export class BotHandler {
         const language = result.language;
         const displayContent = content.length > 64 ? content.substring(0, 64) + '...' : content;
 
+        // Format content with blockquote
+        const formattedContent = `<blockquote>${content}</blockquote>`;
+
         return {
           type: 'article',
           id: messageId.toString(),
           title: displayContent,
           description: language.toUpperCase(),
           input_message_content: {
-            message_text: content
-          }
+            message_text: formattedContent,
+            parse_mode: 'HTML'
+          },
+          reply_markup: this.getActionKeyboard()
         };
       });
 

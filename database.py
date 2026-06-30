@@ -98,6 +98,18 @@ class Database:
             logger.error(f"Error getting user language: {e}")
             return None
     
+    def get_all_users(self) -> list:
+        """Get all user IDs from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id FROM users")
+                results = cursor.fetchall()
+                return [row[0] for row in results]
+        except Exception as e:
+            logger.error(f"Error getting all users: {e}")
+            return []
+    
     def save_meaning(self, message_id: int, language: str, meaning: str) -> bool:
         """Save custom meaning for a message."""
         try:

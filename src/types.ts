@@ -146,6 +146,13 @@ export interface LanguageConfig {
   meaning: string;
   support_text: string;
   contribution_text: string;
+  commands: {
+    start: string;
+    language: string;
+    help: string;
+    report: string;
+    contribution: string;
+  };
 }
 
 export interface Languages {

@@ -76,6 +76,30 @@ export class TelegramAPI {
     });
   }
 
+  async sendPhoto(chatId: number, fileId: string, caption?: string): Promise<TelegramMessage> {
+    return await this.apiCall('sendPhoto', {
+      chat_id: chatId,
+      photo: fileId,
+      caption,
+    });
+  }
+
+  async sendVideo(chatId: number, fileId: string, caption?: string): Promise<TelegramMessage> {
+    return await this.apiCall('sendVideo', {
+      chat_id: chatId,
+      video: fileId,
+      caption,
+    });
+  }
+
+  async sendDocument(chatId: number, fileId: string, caption?: string): Promise<TelegramMessage> {
+    return await this.apiCall('sendDocument', {
+      chat_id: chatId,
+      document: fileId,
+      caption,
+    });
+  }
+
   async getMessage(chatId: string | number, messageId: number): Promise<TelegramMessage> {
     return await this.apiCall('getMessage', {
       chat_id: chatId,

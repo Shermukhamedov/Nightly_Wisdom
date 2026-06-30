@@ -43,6 +43,7 @@ class UserState(StatesGroup):
     waiting_for_meaning_language = State()
     translating = State()
     waiting_for_contribution = State()
+    waiting_for_broadcast = State()
 
 # Temporary storage for message IDs (in production, use Redis or similar)
 temp_message_storage = {}
@@ -163,16 +164,13 @@ async def cmd_help(message: types.Message):
     user_id = message.from_user.id
     language = db.get_user_language(user_id) or "en"
     
-    # Create clickable channel link
-    channel_link = f"https://t.me/{validator.channel_username}"
-    help_text = f"1) Go to our channel [Nightly Wisdom]({channel_link}) and forward quote then select translation or meaning"
-    
-    # Parse as markdown to enable the link
-    await message.answer(help_text, parse_mode="Markdown")
+    help_text = get_text(language, "help_text")
+    await message.answer(help_text, parse_mode="HTML")
 
 @dp.message(Command("support"))
-async def cmd_support(message: types.Message):
-    """Handle /support command - show support information."""
+@dp.message(Command("report"))
+async def cmd_report(message: types.Message):
+    """Handle /report command - show support information."""
     user_id = message.from_user.id
     language = db.get_user_language(user_id) or "en"
     
@@ -264,18 +262,67 @@ async def process_contribution(message: types.Message, state: FSMContext):
         await message.answer("An error occurred while processing your contribution. Please try again later.")
         await state.clear()
 
-@dp.message(Command("meaning"))
-async def cmd_meaning(message: types.Message):
-    """Handle /meaning command - admin only (skeleton for now)."""
+@dp.message(Command("message"))
+async def cmd_message(message: types.Message, state: FSMContext):
+    """Handle /message command - admin only to broadcast messages to all users."""
     user_id = message.from_user.id
     
-    # Check if user is admin
-    if not db.is_admin(user_id):
+    # Check if user is admin (by username)
+    if message.from_user.username != "akkkkbar":
         await message.answer("This command is only available to administrators.")
         return
     
-    # Skeleton implementation - will be expanded in future stages
-    await message.answer("Meaning management feature will be implemented in future stages.")
+    await message.answer("Please send the message you want to broadcast to all users.")
+    await state.set_state(UserState.waiting_for_broadcast)
+
+@dp.message(UserState.waiting_for_broadcast)
+async def process_broadcast(message: types.Message, state: FSMContext):
+    """Process broadcast message from admin."""
+    user_id = message.from_user.id
+    
+    # Verify admin again
+    if message.from_user.username != "akkkkbar":
+        await message.answer("This command is only available to administrators.")
+        await state.clear()
+        return
+    
+    try:
+        # Get all users from database
+        all_users = db.get_all_users()
+        
+        if not all_users:
+            await message.answer("No users found in database.")
+            await state.clear()
+            return
+        
+        success_count = 0
+        fail_count = 0
+        
+        # Broadcast message to all users
+        for user_id in all_users:
+            try:
+                if message.text:
+                    await bot.send_message(user_id, message.text)
+                elif message.photo:
+                    await bot.send_photo(user_id, message.photo[0].file_id, caption=message.caption)
+                elif message.video:
+                    await bot.send_video(user_id, message.video.file_id, caption=message.caption)
+                elif message.document:
+                    await bot.send_document(user_id, message.document.file_id, caption=message.caption)
+                else:
+                    await bot.forward_message(user_id, message.chat.id, message.message_id)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to send broadcast to user {user_id}: {e}")
+                fail_count += 1
+        
+        await message.answer(f"Broadcast completed!\n✅ Success: {success_count}\n❌ Failed: {fail_count}")
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error broadcasting message: {e}")
+        await message.answer("An error occurred while broadcasting the message. Please try again.")
+        await state.clear()
 
 # URL and forwarded message handlers
 @dp.message()
@@ -566,13 +613,17 @@ async def handle_inline_query(inline_query: InlineQuery):
         # Truncate content for display
         display_content = content[:100] + "..." if len(content) > 100 else content
         
+        # Format content with blockquote
+        formatted_content = f"<blockquote>{content}</blockquote>"
+        
         # Create inline result with the quote content and action buttons
         result = InlineQueryResultArticle(
             id=str(message_id),
             title=display_content,
             description=f"Language: {language.upper()}",
             input_message_content=InputTextMessageContent(
-                message_text=content
+                message_text=formatted_content,
+                parse_mode="HTML"
             ),
             reply_markup=get_action_keyboard()
         )
