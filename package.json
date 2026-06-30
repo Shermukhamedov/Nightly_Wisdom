@@ -1,0 +1,30 @@
+{
+  "name": "nightly-wisdom-bot",
+  "version": "1.0.0",
+  "description": "Nightly Wisdom Telegram Bot on Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:create": "wrangler d1 create nightly-wisdom-db",
+    "d1:migrate": "wrangler d1 execute nightly-wisdom-db --file=./migrations/0001_init.sql",
+    "kv:create": "wrangler kv:namespace create TEMP_STORAGE --preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "cloudflare",
+    "workers"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240512.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.60.0"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}

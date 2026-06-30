@@ -3,8 +3,7 @@
 Historical Quote Import Script
 
 This script imports all historical posts from the Nightly Wisdom channel
-into the quotes table. It runs once to populate the database with existing
-quotes before the bot started auto-indexing.
+and exports them as SQL statements for D1 import.
 """
 
 import os
@@ -18,7 +17,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from telethon import TelegramClient
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument, MessageMediaGeo
-from database import Database
 from language_detector import get_language_detector
 
 # Configure logging
@@ -40,9 +38,12 @@ CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "Nightly_Wisdom")
 # Session file for Telethon
 SESSION_FILE = "import_session"
 
+# Output SQL file
+OUTPUT_SQL = "historical_quotes_import.sql"
+
 
 async def import_historical_quotes():
-    """Import all historical quotes from the channel."""
+    """Import all historical quotes from the channel and export as SQL."""
     
     # Check if API credentials are set
     if API_ID == 0 or not API_HASH:
@@ -50,8 +51,9 @@ async def import_historical_quotes():
         logger.error("Get these from https://my.telegram.org")
         return
     
-    # Initialize database
-    db = Database()
+    logger.info("IMPORTANT: Enter your PERSONAL phone number (e.g., +998901234567)")
+    logger.info("Do NOT enter the bot token - it won't work for fetching history")
+    
     detector = get_language_detector()
     
     # Initialize Telethon client
@@ -73,21 +75,14 @@ async def import_historical_quotes():
         
         logger.info(f"Total messages fetched: {len(messages)}")
         
-        # Process each message
+        # Generate SQL statements
+        sql_statements = []
         imported_count = 0
         skipped_count = 0
-        error_count = 0
         
         for msg in messages:
             try:
                 message_id = msg.id
-                
-                # Check if already exists in database
-                existing = db.get_quote_by_message_id(message_id)
-                if existing:
-                    logger.debug(f"Skipping duplicate message {message_id}")
-                    skipped_count += 1
-                    continue
                 
                 # Extract content
                 content = None
@@ -134,29 +129,37 @@ async def import_historical_quotes():
                 # Get created_at date
                 created_at = datetime.fromtimestamp(msg.date.timestamp()).isoformat()
                 
-                # Save to database
-                success = db.save_quote(message_id, content or "", language or "unknown", media_type)
+                # Escape content for SQL
+                escaped_content = content.replace("'", "''") if content else ''
                 
-                if success:
-                    imported_count += 1
-                    logger.info(f"Imported message {message_id}: {media_type}, language: {language}")
-                else:
-                    error_count += 1
-                    logger.error(f"Failed to import message {message_id}")
+                # Generate INSERT statement
+                sql = f"INSERT OR REPLACE INTO quotes (message_id, content, language, media_type, created_at) VALUES ({message_id}, '{escaped_content}', '{language}', '{media_type}', '{created_at}');"
+                sql_statements.append(sql)
+                imported_count += 1
+                logger.info(f"Generated SQL for message {message_id}: {media_type}, language: {language}")
                 
             except Exception as e:
-                error_count += 1
                 logger.error(f"Error processing message {msg.id}: {e}")
+        
+        # Write to SQL file
+        with open(OUTPUT_SQL, 'w', encoding='utf-8') as f:
+            f.write("-- Historical Quotes Import for D1\n")
+            f.write(f"-- Generated: {datetime.now().isoformat()}\n")
+            f.write(f"-- Channel: {CHANNEL_USERNAME}\n")
+            f.write(f"-- Total quotes: {imported_count}\n\n")
+            f.write("\n".join(sql_statements))
         
         # Summary
         logger.info("=" * 50)
         logger.info("Import Summary")
         logger.info("=" * 50)
         logger.info(f"Total messages fetched: {len(messages)}")
-        logger.info(f"Successfully imported: {imported_count}")
-        logger.info(f"Skipped (duplicates/no content): {skipped_count}")
-        logger.info(f"Errors: {error_count}")
+        logger.info(f"SQL statements generated: {imported_count}")
+        logger.info(f"Skipped (no content): {skipped_count}")
+        logger.info(f"SQL file saved to: {OUTPUT_SQL}")
         logger.info("=" * 50)
+        logger.info(f"To import to D1, run:")
+        logger.info(f"wrangler d1 execute nightly-wisdom-db --remote --file={OUTPUT_SQL}")
         
     except Exception as e:
         logger.error(f"Error during import: {e}")

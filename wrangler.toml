@@ -1,0 +1,29 @@
+name = "nightly-wisdom-bot"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "nightly-wisdom-db"
+database_id = "6f252c03-eaf7-40b5-99dd-0401a35c8473"
+
+# KV namespace for temporary message storage
+[[kv_namespaces]]
+binding = "KV"
+id = "dff1f8324fa545be92b71d3eb86099d1"
+
+# Environment variables
+[vars]
+CHANNEL_USERNAME = "Nightly_Wisdom"
+
+# Secrets (set via: wrangler secret put <SECRET_NAME>)
+# For local development, use .dev.vars file
+# TELEGRAM_BOT_TOKEN
+# GEMINI_API_KEY
+# ADMIN_USER_ID
+# TELEGRAM_API_ID
+# TELEGRAM_API_HASH
+
+[triggers]
+crons = []
