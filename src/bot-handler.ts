@@ -4,7 +4,7 @@ import { KVStorage } from './kv-storage';
 import { TelegramAPI } from './telegram-api';
 import { ChannelValidator } from './channel-validator';
 import { getLanguageDetector } from './language-detector';
-import { getGeminiService } from './gemini-service';
+import { getAIService } from './ai-service';
 import { getText, getLanguageName } from './languages';
 
 export class BotHandler {
@@ -405,8 +405,8 @@ export class BotHandler {
       const processingMessage = await this.telegram.sendMessage(userId, 'Translating... ⏳');
 
       try {
-        const geminiService = getGeminiService(this.env.GEMINI_API_KEY);
-        const translatedText = await geminiService.translateText(messageContent, targetLanguage);
+        const aiService = getAIService(this.env);
+        const translatedText = await aiService.translateText(messageContent, targetLanguage);
 
         if (translatedText) {
           await this.telegram.deleteMessage(userId, processingMessage.message_id);
@@ -442,8 +442,8 @@ export class BotHandler {
           const meaningLabel = getText(language as LanguageCode, 'meaning');
           await this.telegram.sendMessage(userId, `${meaningLabel}:\n\n${customMeaning}`);
         } else {
-          const geminiService = getGeminiService(this.env.GEMINI_API_KEY);
-          const generatedMeaning = await geminiService.generateMeaning(messageContent, targetLanguage);
+          const aiService = getAIService(this.env);
+          const generatedMeaning = await aiService.generateMeaning(messageContent, targetLanguage);
 
           if (generatedMeaning) {
             await this.telegram.deleteMessage(userId, processingMessage.message_id);

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from database import Database
 from languages import LANGUAGES, get_text, get_language_name, LANGUAGE_CODES
 from channel_validator import ChannelValidator
-from gemini_service import get_gemini_service
+from ai_service import get_ai_service
 from language_detector import get_language_detector
 
 # Load environment variables
@@ -526,9 +526,9 @@ async def process_meaning_language_callback(callback: types.CallbackQuery, state
             await callback.message.answer(f"{meaning_label}:\n\n{custom_meaning}")
             logger.info(f"Retrieved custom meaning for message {message_id} in {target_language}")
         else:
-            # Generate meaning using Gemini
-            gemini_service = get_gemini_service()
-            generated_meaning = await gemini_service.generate_meaning(message_content, target_language)
+            # Generate meaning using AI service
+            ai_service = get_ai_service()
+            generated_meaning = await ai_service.generate_meaning(message_content, target_language)
             
             if generated_meaning:
                 # Delete processing message
@@ -568,9 +568,9 @@ async def process_translation_language_callback(callback: types.CallbackQuery, s
     processing_message = await callback.message.answer("Translating... ⏳")
     
     try:
-        # Get Gemini service and translate
-        gemini_service = get_gemini_service()
-        translated_text = await gemini_service.translate_text(message_content, target_language)
+        # Get AI service and translate
+        ai_service = get_ai_service()
+        translated_text = await ai_service.translate_text(message_content, target_language)
         
         if translated_text:
             # Delete processing message
