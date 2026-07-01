@@ -216,8 +216,8 @@ class Database:
             logger.error(f"Error getting quote by message ID: {e}")
             return None
     
-    def save_contribution(self, user_id: int, content_type: str, content: str) -> bool:
-        """Save a user contribution to the database."""
+    def save_contribution(self, user_id: int, content_type: str, content: str) -> Optional[int]:
+        """Save a user contribution to the database and return the contribution ID."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -226,11 +226,12 @@ class Database:
                     VALUES (?, ?, ?, 'pending')
                 """, (user_id, content_type, content))
                 conn.commit()
-                logger.info(f"Saved contribution from user {user_id}: {content_type}")
-                return True
+                contribution_id = cursor.lastrowid
+                logger.info(f"Saved contribution from user {user_id}: {content_type} with ID {contribution_id}")
+                return contribution_id
         except Exception as e:
             logger.error(f"Error saving contribution: {e}")
-            return False
+            return None
     
     def update_contribution_status(self, contribution_id: int, status: str) -> bool:
         """Update contribution status (approved, rejected, already_exists)."""

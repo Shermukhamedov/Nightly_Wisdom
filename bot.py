@@ -2,7 +2,7 @@ import os
 import logging
 from typing import Optional
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import ChatMemberUpdated, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -48,6 +48,7 @@ class UserState(StatesGroup):
 # Temporary storage for message IDs (in production, use Redis or similar)
 temp_message_storage = {}
 temp_message_content = {}  # Store message content for translation
+contribution_data = {}  # Store contribution data for approval/rejection
 
 def get_language_keyboard():
     """Create language selection keyboard."""
@@ -62,13 +63,16 @@ def get_language_keyboard():
     )
     return keyboard
 
-def get_action_keyboard():
-    """Create inline keyboard with Translation and Meaning buttons."""
+def get_action_keyboard(language: str = "en"):
+    """Create inline keyboard with Translation and Meaning buttons in user's language."""
+    translation_text = get_text(language, "translation")
+    meaning_text = get_text(language, "meaning")
+    
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                types.InlineKeyboardButton(text="Translation", callback_data="action_translation"),
-                types.InlineKeyboardButton(text="Meaning", callback_data="action_meaning")
+                types.InlineKeyboardButton(text=translation_text, callback_data="action_translation"),
+                types.InlineKeyboardButton(text=meaning_text, callback_data="action_meaning")
             ]
         ]
     )
@@ -110,8 +114,57 @@ def get_invalid_channel_keyboard():
     )
     return keyboard
 
+def get_contribution_review_keyboard(contribution_id: int):
+    """Create inline keyboard for contribution review (approve/reject)."""
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_{contribution_id}"),
+                types.InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_{contribution_id}")
+            ]
+        ]
+    )
+    return keyboard
+
+async def set_bot_commands():
+    """Set bot commands for all languages."""
+    # English commands
+    en_commands = [
+        types.BotCommand(command="start", description="Start the bot"),
+        types.BotCommand(command="language", description="Change language"),
+        types.BotCommand(command="help", description="User guide"),
+        types.BotCommand(command="report", description="Report issues"),
+        types.BotCommand(command="contribution", description="Submit quotes"),
+    ]
+    await bot.set_my_commands(en_commands, language_code="en")
+    logger.info("Set bot commands for English")
+    
+    # Uzbek commands
+    uz_commands = [
+        types.BotCommand(command="boshlash", description="Botni ishga tushirish"),
+        types.BotCommand(command="til", description="Tilni o'zgartirish"),
+        types.BotCommand(command="yordam", description="Foydalanish qo'llanmasi"),
+        types.BotCommand(command="shikoyat", description="Xatoliklar haqida xabar"),
+        types.BotCommand(command="ulashish", description="Iqtibos yuborish"),
+    ]
+    await bot.set_my_commands(uz_commands, language_code="uz")
+    logger.info("Set bot commands for Uzbek")
+    
+    # Russian commands
+    ru_commands = [
+        types.BotCommand(command="start", description="Запустить бота"),
+        types.BotCommand(command="language", description="Изменить язык"),
+        types.BotCommand(command="help", description="Руководство"),
+        types.BotCommand(command="report", description="Сообщить о проблемах"),
+        types.BotCommand(command="contribution", description="Предложить цитаты"),
+    ]
+    await bot.set_my_commands(ru_commands, language_code="ru")
+    logger.info("Set bot commands for Russian")
+
 # Command handlers
 @dp.message(Command("start"))
+@dp.message(Command("boshlash"))
+@dp.message(Command("старт"))
 async def cmd_start(message: types.Message, state: FSMContext):
     """Handle /start command - show language selection."""
     user_id = message.from_user.id
@@ -149,6 +202,8 @@ async def process_language_selection(message: types.Message, state: FSMContext):
         await message.answer("Please select a valid language option.")
 
 @dp.message(Command("language"))
+@dp.message(Command("til"))
+@dp.message(Command("язык"))
 async def cmd_language(message: types.Message, state: FSMContext):
     """Handle /language command - allow changing language."""
     user_id = message.from_user.id
@@ -159,6 +214,8 @@ async def cmd_language(message: types.Message, state: FSMContext):
     await state.set_state(UserState.waiting_for_language)
 
 @dp.message(Command("help"))
+@dp.message(Command("yordam"))
+@dp.message(Command("помощь"))
 async def cmd_help(message: types.Message):
     """Handle /help command - show usage instructions."""
     user_id = message.from_user.id
@@ -169,6 +226,8 @@ async def cmd_help(message: types.Message):
 
 @dp.message(Command("support"))
 @dp.message(Command("report"))
+@dp.message(Command("shikoyat"))
+@dp.message(Command("жалоба"))
 async def cmd_report(message: types.Message):
     """Handle /report command - show support information."""
     user_id = message.from_user.id
@@ -178,6 +237,8 @@ async def cmd_report(message: types.Message):
     await message.answer(support_text)
 
 @dp.message(Command("contribution"))
+@dp.message(Command("ulashish"))
+@dp.message(Command("предложить"))
 async def cmd_contribution(message: types.Message, state: FSMContext):
     """Handle /contribution command - start contribution process."""
     user_id = message.from_user.id
@@ -233,7 +294,22 @@ async def process_contribution(message: types.Message, state: FSMContext):
             return
         
         # Save to database
-        db.save_contribution(user_id, content_type, content)
+        contribution_id = db.save_contribution(user_id, content_type, content)
+        
+        if not contribution_id:
+            await message.answer("An error occurred while saving your contribution. Please try again.")
+            await state.clear()
+            return
+        
+        # Store contribution data for callback handling
+        contribution_data[contribution_id] = {
+            "user_id": user_id,
+            "username": message.from_user.username,
+            "language": language,
+            "content_type": content_type,
+            "content": content,
+            "message_id": message.message_id
+        }
         
         # Prepare contribution info
         contribution_info = f"📨 New Contribution\n\nUser: @{message.from_user.username or 'No username'}\nTelegram ID: {user_id}\n"
@@ -241,14 +317,14 @@ async def process_contribution(message: types.Message, state: FSMContext):
         # Determine content type for display
         if message.text:
             contribution_info += f"Type: Text\n\nContent:\n{message.text}"
-            await bot.send_message(ADMIN_USER_ID, contribution_info)
+            await bot.send_message(ADMIN_USER_ID, contribution_info, reply_markup=get_contribution_review_keyboard(contribution_id))
         elif message.photo:
             contribution_info += "Type: Photo"
-            await bot.send_message(ADMIN_USER_ID, contribution_info)
+            await bot.send_message(ADMIN_USER_ID, contribution_info, reply_markup=get_contribution_review_keyboard(contribution_id))
             await message.forward(ADMIN_USER_ID)
         elif message.video:
             contribution_info += "Type: Video"
-            await bot.send_message(ADMIN_USER_ID, contribution_info)
+            await bot.send_message(ADMIN_USER_ID, contribution_info, reply_markup=get_contribution_review_keyboard(contribution_id))
             await message.forward(ADMIN_USER_ID)
         
         # Send confirmation to user
@@ -364,7 +440,8 @@ async def process_message(message: types.Message, state: FSMContext):
                 # Store message ID and content temporarily
                 temp_message_storage[user_id] = message_id
                 temp_message_content[user_id] = message_content
-                await message.answer("Please select an action:", reply_markup=get_action_keyboard())
+                select_text = get_text(language, "select_action") if "select_action" in LANGUAGES[language] else "Please select an action:"
+                await message.answer(select_text, reply_markup=get_action_keyboard(language))
                 
             except Exception as e:
                 logger.error(f"Error fetching channel message: {e}")
@@ -394,7 +471,8 @@ async def process_message(message: types.Message, state: FSMContext):
             # Store message ID and content temporarily
             temp_message_storage[user_id] = message_id
             temp_message_content[user_id] = message_content
-            await message.answer("Please select an action:", reply_markup=get_action_keyboard())
+            select_text = get_text(language, "select_action") if "select_action" in LANGUAGES[language] else "Please select an action:"
+            await message.answer(select_text, reply_markup=get_action_keyboard(language))
         else:
             invalid_text = get_text(language, "invalid_channel")
             await message.answer(invalid_text, reply_markup=get_invalid_channel_keyboard())
@@ -593,6 +671,90 @@ async def process_translation_language_callback(callback: types.CallbackQuery, s
     
     await callback.answer()
 
+@dp.callback_query(lambda c: c.data.startswith("approve_"))
+async def process_approve_callback(callback: types.CallbackQuery):
+    """Process approve button click for contribution."""
+    admin_id = callback.from_user.id
+    
+    # Verify admin
+    if callback.from_user.username != "akkkkbar":
+        await callback.answer("Only admin can approve contributions.")
+        return
+    
+    contribution_id = int(callback.data.split("_")[1])
+    
+    if contribution_id not in contribution_data:
+        await callback.answer("Contribution data not found.")
+        return
+    
+    data = contribution_data[contribution_id]
+    user_id = data["user_id"]
+    language = data["language"]
+    
+    # Update database status
+    db.update_contribution_status(contribution_id, "approved")
+    
+    # Send approval message to user
+    approval_messages = {
+        "en": "✅ Great news! Your contribution has been approved and will be featured on our channel soon. Thank you for sharing!",
+        "uz": "✅ Yaxshi xabar! Sizning hissangiz tasdiqlandi va tez orada kanalimizda chiqariladi. Ulashganingiz uchun rahmat!",
+        "ru": "✅ Отличные новости! Ваш вклад одобрен и скоро будет опубликован на нашем канале. Спасибо за участие!"
+    }
+    
+    try:
+        await bot.send_message(user_id, approval_messages.get(language, approval_messages["en"]))
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("Contribution approved and user notified.")
+        logger.info(f"Contribution {contribution_id} approved by admin {admin_id}, user {user_id} notified")
+    except Exception as e:
+        logger.error(f"Error sending approval message to user {user_id}: {e}")
+        await callback.answer("Contribution approved but failed to notify user.")
+    
+    # Clean up stored data
+    del contribution_data[contribution_id]
+
+@dp.callback_query(lambda c: c.data.startswith("reject_"))
+async def process_reject_callback(callback: types.CallbackQuery):
+    """Process reject button click for contribution."""
+    admin_id = callback.from_user.id
+    
+    # Verify admin
+    if callback.from_user.username != "akkkkbar":
+        await callback.answer("Only admin can reject contributions.")
+        return
+    
+    contribution_id = int(callback.data.split("_")[1])
+    
+    if contribution_id not in contribution_data:
+        await callback.answer("Contribution data not found.")
+        return
+    
+    data = contribution_data[contribution_id]
+    user_id = data["user_id"]
+    language = data["language"]
+    
+    # Update database status
+    db.update_contribution_status(contribution_id, "rejected")
+    
+    # Send rejection message to user
+    rejection_messages = {
+        "en": "❌ Thank you for your contribution. Unfortunately, it was not approved as it may already exist in our collection or doesn't meet our criteria. Please try again with a different quote!",
+        "uz": "❌ Hissangiz uchun rahmat. Afsuski, u allaqachon bizning to'plamimizda bo'lishi mumkin yoki bizning mezonlarimizga mos kelmasligi sababli tasdiqlanmadi. Iltimos, boshqa iqtibos bilan urinib ko'ring!",
+        "ru": "❌ Спасибо за ваш вклад. К сожалению, он не был одобрен, так как может уже существовать в нашей коллекции или не соответствует нашим критериям. Попробуйте отправить другую цитату!"
+    }
+    
+    try:
+        await bot.send_message(user_id, rejection_messages.get(language, rejection_messages["en"]))
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("Contribution rejected and user notified.")
+        logger.info(f"Contribution {contribution_id} rejected by admin {admin_id}, user {user_id} notified")
+    except Exception as e:
+        logger.error(f"Error sending rejection message to user {user_id}: {e}")
+        await callback.answer("Contribution rejected but failed to notify user.")
+    
+    # Clean up stored data
+    del contribution_data[contribution_id]
+
 # Inline query handler for Stage 4 (Inline Quote Search)
 @dp.inline_query()
 async def handle_inline_query(inline_query: InlineQuery):
@@ -625,7 +787,7 @@ async def handle_inline_query(inline_query: InlineQuery):
                 message_text=formatted_content,
                 parse_mode="HTML"
             ),
-            reply_markup=get_action_keyboard()
+            reply_markup=get_action_keyboard(language)
         )
         inline_results.append(result)
         
@@ -642,6 +804,9 @@ async def main():
     # Delete any existing webhook to avoid conflicts
     await bot.delete_webhook(drop_pending_updates=True)
     logger.info("Webhook deleted")
+    
+    # Set bot commands for all languages
+    await set_bot_commands()
     
     await dp.start_polling(bot)
 

@@ -6,6 +6,7 @@ LANGUAGES = {
         "flag": "🇺🇿",
         "welcome": "Assalomu alaykum! Nightly Wisdom botiga xush kelibsiz.",
         "select_language": "Iltimos, tilni tanlang:",
+        "select_action": "Iltimos, amalni tanlang:",
         "language_changed": "Til o'zgartirildi.",
         "help_text": """Nightly Wisdom Bot-dan foydalanish qo'llanmasi
 
@@ -42,6 +43,7 @@ Istalgan chatda bizning iqtiboslar bazamizdan qidirishingiz mumkin! Shunchaki @N
         "flag": "🇷🇺",
         "welcome": "Здравствуйте! Добро пожаловать в Nightly Wisdom бот.",
         "select_language": "Пожалуйста, выберите язык:",
+        "select_action": "Пожалуйста, выберите действие:",
         "language_changed": "Язык изменен.",
         "help_text": """Руководство пользователя Nightly Wisdom Bot
 
@@ -78,6 +80,7 @@ Istalgan chatda bizning iqtiboslar bazamizdan qidirishingiz mumkin! Shunchaki @N
         "flag": "🇬🇧",
         "welcome": "Hello! Welcome to Nightly Wisdom bot.",
         "select_language": "Please select your language:",
+        "select_action": "Please select an action:",
         "language_changed": "Language changed.",
         "help_text": """How to Use Nightly Wisdom Bot
 
