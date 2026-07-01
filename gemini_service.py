@@ -12,8 +12,8 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        logger.info("Gemini service initialized with model: gemini-1.5-flash")
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        logger.info("Gemini service initialized with model: gemini-2.0-flash")
     
     async def translate_text(self, text: str, target_language: str) -> Optional[str]:
         """
