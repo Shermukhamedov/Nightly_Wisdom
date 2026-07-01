@@ -61,4 +61,17 @@ export class KVStorage {
   async clearUserState(userId: number): Promise<void> {
     await this.delete(`state:${userId}`);
   }
+
+  async setContributionData(contributionId: number, data: any): Promise<void> {
+    await this.set(`contribution:${contributionId}`, JSON.stringify(data), 86400); // 24 hour TTL
+  }
+
+  async getContributionData(contributionId: number): Promise<any | null> {
+    const value = await this.get(`contribution:${contributionId}`);
+    return value ? JSON.parse(value) : null;
+  }
+
+  async deleteContributionData(contributionId: number): Promise<void> {
+    await this.delete(`contribution:${contributionId}`);
+  }
 }

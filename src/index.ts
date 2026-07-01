@@ -7,7 +7,20 @@ export default {
     if (request.method === 'GET') {
       const url = new URL(request.url);
       if (url.pathname === '/health') {
+        // Initialize bot commands on health check
+        try {
+          const handler = new BotHandler(env);
+          await handler.setBotCommands();
+        } catch (error) {
+          console.error('Error setting bot commands:', error);
+        }
         return new Response('OK', { status: 200 });
+      }
+      if (url.pathname === '/init') {
+        // Manual initialization endpoint
+        const handler = new BotHandler(env);
+        await handler.setBotCommands();
+        return new Response('Bot commands initialized', { status: 200 });
       }
       return new Response('Nightly Wisdom Bot - Webhook endpoint', { status: 200 });
     }

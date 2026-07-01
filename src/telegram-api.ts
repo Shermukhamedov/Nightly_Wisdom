@@ -46,6 +46,16 @@ export class TelegramAPI {
     });
   }
 
+  async editMessageReplyMarkup(chatId: number, messageId: number, options?: {
+    reply_markup?: TelegramInlineKeyboardMarkup | null;
+  }): Promise<TelegramMessage> {
+    return await this.apiCall('editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId,
+      ...options,
+    });
+  }
+
   async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
     await this.apiCall('answerCallbackQuery', {
       callback_query_id: callbackQueryId,
@@ -117,5 +127,13 @@ export class TelegramAPI {
 
   async getWebhookInfo(): Promise<any> {
     return await this.apiCall('getWebhookInfo');
+  }
+
+  async setMyCommands(commands: any[], languageCode?: string): Promise<void> {
+    const body: any = { commands };
+    if (languageCode) {
+      body.language_code = languageCode;
+    }
+    await this.apiCall('setMyCommands', body);
   }
 }

@@ -133,16 +133,16 @@ export class Database {
     }
   }
 
-  async saveContribution(userId: number, contentType: string, content: string): Promise<boolean> {
+  async saveContribution(userId: number, contentType: string, content: string): Promise<number | null> {
     try {
-      await this.db
+      const result = await this.db
         .prepare('INSERT INTO contributions (user_id, content_type, content, status) VALUES (?, ?, ?, "pending")')
         .bind(userId, contentType, content)
         .run();
-      return true;
+      return result.meta.last_row_id || null;
     } catch (error) {
       console.error('Error saving contribution:', error);
-      return false;
+      return null;
     }
   }
 

@@ -112,19 +112,29 @@ export class BotHandler {
 
     switch (command) {
       case '/start':
+      case '/boshlash':
+      case '/старт':
         await this.cmdStart(message);
         break;
       case '/language':
+      case '/til':
+      case '/язык':
         await this.cmdLanguage(message);
         break;
       case '/help':
+      case '/yordam':
+      case '/помощь':
         await this.cmdHelp(message);
         break;
       case '/support':
       case '/report':
+      case '/shikoyat':
+      case '/жалоба':
         await this.cmdReport(message);
         break;
       case '/contribution':
+      case '/ulashish':
+      case '/предложить':
         await this.cmdContribution(message);
         break;
       case '/message':
@@ -236,7 +246,23 @@ export class BotHandler {
       }
 
       // Save to database
-      await this.db.saveContribution(userId, contentType, content);
+      const contributionId = await this.db.saveContribution(userId, contentType, content);
+      
+      if (!contributionId) {
+        await this.telegram.sendMessage(userId, 'An error occurred while saving your contribution. Please try again.');
+        await this.kv.clearUserState(userId);
+        return;
+      }
+      
+      // Store contribution data for callback handling
+      await this.kv.setContributionData(contributionId, {
+        user_id: userId,
+        username: message.from.username,
+        language: language,
+        content_type: contentType,
+        content: content,
+        message_id: message.message_id
+      });
 
       // Prepare contribution info
       const username = message.from.username || 'No username';
@@ -245,14 +271,20 @@ export class BotHandler {
       // Determine content type for display
       if (message.text) {
         contributionInfo += `Type: Text\n\nContent:\n${message.text}`;
-        await this.telegram.sendMessage(adminUserId, contributionInfo);
+        await this.telegram.sendMessage(adminUserId, contributionInfo, {
+          reply_markup: this.getContributionReviewKeyboard(contributionId)
+        });
       } else if (message.photo) {
         contributionInfo += 'Type: Photo';
-        await this.telegram.sendMessage(adminUserId, contributionInfo);
+        await this.telegram.sendMessage(adminUserId, contributionInfo, {
+          reply_markup: this.getContributionReviewKeyboard(contributionId)
+        });
         await this.telegram.forwardMessage(adminUserId, message.chat.id, message.message_id);
       } else if (message.video) {
         contributionInfo += 'Type: Video';
-        await this.telegram.sendMessage(adminUserId, contributionInfo);
+        await this.telegram.sendMessage(adminUserId, contributionInfo, {
+          reply_markup: this.getContributionReviewKeyboard(contributionId)
+        });
         await this.telegram.forwardMessage(adminUserId, message.chat.id, message.message_id);
       }
 
@@ -459,6 +491,10 @@ export class BotHandler {
       }
 
       await this.telegram.answerCallbackQuery(callbackQuery.id);
+    } else if (data.startsWith('approve_')) {
+      await this.processApproveCallback(callbackQuery);
+    } else if (data.startsWith('reject_')) {
+      await this.processRejectCallback(callbackQuery);
     }
   }
 
@@ -595,5 +631,141 @@ export class BotHandler {
         [{ text: 'our channel', url: `https://t.me/${this.env.CHANNEL_USERNAME}` }]
       ]
     };
+  }
+
+  private getContributionReviewKeyboard(contributionId: number): any {
+    return {
+      inline_keyboard: [
+        [
+          { text: '✅ Approve', callback_data: `approve_${contributionId}` },
+          { text: '❌ Reject', callback_data: `reject_${contributionId}` }
+        ]
+      ]
+    };
+  }
+
+  private async processApproveCallback(callbackQuery: any): Promise<void> {
+    const adminId = callbackQuery.from.id;
+    const username = callbackQuery.from.username;
+    
+    // Verify admin
+    if (username !== 'akkkkbar') {
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Only admin can approve contributions.');
+      return;
+    }
+    
+    const contributionId = parseInt(callbackQuery.data.split('_')[1], 10);
+    
+    const contributionData = await this.kv.getContributionData(contributionId);
+    if (!contributionData) {
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution data not found.');
+      return;
+    }
+    
+    const userId = contributionData.user_id;
+    const language = contributionData.language;
+    
+    // Update database status
+    await this.db.updateContributionStatus(contributionId, 'approved');
+    
+    // Send approval message to user
+    const approvalMessages: Record<string, string> = {
+      en: '✅ Great news! Your contribution has been approved and will be featured on our channel soon. Thank you for sharing!',
+      uz: '✅ Yaxshi xabar! Sizning hissangiz tasdiqlandi va tez orada kanalimizda chiqariladi. Ulashganingiz uchun rahmat!',
+      ru: '✅ Отличные новости! Ваш вклад одобрен и скоро будет опубликован на нашем канале. Спасибо за участие!'
+    };
+    
+    try {
+      await this.telegram.sendMessage(userId, approvalMessages[language] || approvalMessages['en']);
+      await this.telegram.editMessageReplyMarkup(callbackQuery.message.chat.id, callbackQuery.message.message_id, { reply_markup: null });
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution approved and user notified.');
+      console.log(`Contribution ${contributionId} approved by admin ${adminId}, user ${userId} notified`);
+    } catch (error) {
+      console.error(`Error sending approval message to user ${userId}:`, error);
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution approved but failed to notify user.');
+    }
+    
+    // Clean up stored data
+    await this.kv.deleteContributionData(contributionId);
+  }
+
+  private async processRejectCallback(callbackQuery: any): Promise<void> {
+    const adminId = callbackQuery.from.id;
+    const username = callbackQuery.from.username;
+    
+    // Verify admin
+    if (username !== 'akkkkbar') {
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Only admin can reject contributions.');
+      return;
+    }
+    
+    const contributionId = parseInt(callbackQuery.data.split('_')[1], 10);
+    
+    const contributionData = await this.kv.getContributionData(contributionId);
+    if (!contributionData) {
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution data not found.');
+      return;
+    }
+    
+    const userId = contributionData.user_id;
+    const language = contributionData.language;
+    
+    // Update database status
+    await this.db.updateContributionStatus(contributionId, 'rejected');
+    
+    // Send rejection message to user
+    const rejectionMessages: Record<string, string> = {
+      en: '❌ Thank you for your contribution. Unfortunately, it was not approved as it may already exist in our collection or doesn\'t meet our criteria. Please try again with a different quote!',
+      uz: '❌ Hissangiz uchun rahmat. Afsuski, u allaqachon bizning to\'plamimizda bo\'lishi mumkin yoki bizning mezonlarimizga mos kelmasligi sababli tasdiqlanmadi. Iltimos, boshqa iqtibos bilan urinib ko\'ring!',
+      ru: '❌ Спасибо за ваш вклад. К сожалению, он не был одобрен, так как может уже существовать в нашей коллекции или не соответствует нашим критериям. Попробуйте отправить другую цитату!'
+    };
+    
+    try {
+      await this.telegram.sendMessage(userId, rejectionMessages[language] || rejectionMessages['en']);
+      await this.telegram.editMessageReplyMarkup(callbackQuery.message.chat.id, callbackQuery.message.message_id, { reply_markup: null });
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution rejected and user notified.');
+      console.log(`Contribution ${contributionId} rejected by admin ${adminId}, user ${userId} notified`);
+    } catch (error) {
+      console.error(`Error sending rejection message to user ${userId}:`, error);
+      await this.telegram.answerCallbackQuery(callbackQuery.id, 'Contribution rejected but failed to notify user.');
+    }
+    
+    // Clean up stored data
+    await this.kv.deleteContributionData(contributionId);
+  }
+
+  async setBotCommands(): Promise<void> {
+    // English commands
+    const enCommands = [
+      { command: 'start', description: 'Start the bot' },
+      { command: 'language', description: 'Change language' },
+      { command: 'help', description: 'User guide' },
+      { command: 'report', description: 'Report issues' },
+      { command: 'contribution', description: 'Submit quotes' }
+    ];
+    await this.telegram.setMyCommands(enCommands, 'en');
+    console.log('Set bot commands for English');
+    
+    // Uzbek commands
+    const uzCommands = [
+      { command: 'boshlash', description: 'Botni ishga tushirish' },
+      { command: 'til', description: 'Tilni o\'zgartirish' },
+      { command: 'yordam', description: 'Foydalanish qo\'llanmasi' },
+      { command: 'shikoyat', description: 'Xatoliklar haqida xabar' },
+      { command: 'ulashish', description: 'Iqtibos yuborish' }
+    ];
+    await this.telegram.setMyCommands(uzCommands, 'uz');
+    console.log('Set bot commands for Uzbek');
+    
+    // Russian commands
+    const ruCommands = [
+      { command: 'start', description: 'Запустить бота' },
+      { command: 'language', description: 'Изменить язык' },
+      { command: 'help', description: 'Руководство' },
+      { command: 'report', description: 'Сообщить о проблемах' },
+      { command: 'contribution', description: 'Предложить цитаты' }
+    ];
+    await this.telegram.setMyCommands(ruCommands, 'ru');
+    console.log('Set bot commands for Russian');
   }
 }
