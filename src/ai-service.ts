@@ -1,4 +1,5 @@
 import { LanguageCode } from './types';
+import { getGeminiService } from './gemini-service';
 
 interface AIProvider {
   name: string;
@@ -78,22 +79,7 @@ ${text}`;
     };
     
     const langName = languageNames[language];
-    
-    const prompt = `Explain the meaning of the following quote in ${langName}.
-
-Requirements:
-- Explain the quote simply and clearly
-- Keep the explanation concise (2-3 sentences)
-- Focus on practical life lessons
-- Use ${langName} language
-- Avoid long essays or academic language
-
-Quote:
-${quote}
-
-Provide the explanation in this format:
-Meaning:
-"Your explanation here"`;
+    const prompt = `Explain this quote in ${langName} in 2-3 sentences: ${quote}`;
 
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -103,7 +89,7 @@ Meaning:
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'llama-3.1-70b-versatile',
+          model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.7
         })
@@ -114,6 +100,8 @@ Meaning:
       }
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Groq meaning generation HTTP error: ${response.status} - ${errorText}`);
         throw new Error(`Groq API error: ${response.status}`);
       }
 
@@ -154,7 +142,7 @@ class CohereProvider implements AIProvider {
     const prompt = `Translate the following text to ${targetLangName}. Return only the translation: ${text}`;
 
     try {
-      const response = await fetch('https://api.cohere.ai/v1/generate', {
+      const response = await fetch('https://api.cohere.ai/v1/chat', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -163,7 +151,7 @@ class CohereProvider implements AIProvider {
         },
         body: JSON.stringify({
           model: 'command',
-          prompt: prompt,
+          message: prompt,
           max_tokens: 500,
           temperature: 0.3
         })
@@ -179,8 +167,8 @@ class CohereProvider implements AIProvider {
 
       const data = await response.json() as any;
       
-      if (data.generations && data.generations[0] && data.generations[0].text) {
-        return data.generations[0].text.trim();
+      if (data.text) {
+        return data.text.trim();
       }
 
       return null;
@@ -201,7 +189,7 @@ class CohereProvider implements AIProvider {
     const prompt = `Explain the meaning of this quote in ${langName} in 2-3 sentences: ${quote}`;
 
     try {
-      const response = await fetch('https://api.cohere.ai/v1/generate', {
+      const response = await fetch('https://api.cohere.ai/v1/chat', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -210,7 +198,7 @@ class CohereProvider implements AIProvider {
         },
         body: JSON.stringify({
           model: 'command',
-          prompt: prompt,
+          message: prompt,
           max_tokens: 300,
           temperature: 0.7
         })
@@ -221,13 +209,15 @@ class CohereProvider implements AIProvider {
       }
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Cohere meaning generation HTTP error: ${response.status} - ${errorText}`);
         throw new Error(`Cohere API error: ${response.status}`);
       }
 
       const data = await response.json() as any;
       
-      if (data.generations && data.generations[0] && data.generations[0].text) {
-        return data.generations[0].text.trim();
+      if (data.text) {
+        return data.text.trim();
       }
 
       return null;
@@ -324,6 +314,8 @@ class OpenAIProvider implements AIProvider {
       }
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`OpenAI meaning generation HTTP error: ${response.status} - ${errorText}`);
         throw new Error(`OpenAI API error: ${response.status}`);
       }
 
@@ -372,7 +364,7 @@ class AnthropicProvider implements AIProvider {
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 500,
           messages: [{ role: 'user', content: prompt }]
         })
@@ -418,7 +410,7 @@ class AnthropicProvider implements AIProvider {
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
+          model: 'claude-3-5-haiku-20241022',
           max_tokens: 300,
           messages: [{ role: 'user', content: prompt }]
         })
@@ -429,6 +421,8 @@ class AnthropicProvider implements AIProvider {
       }
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Anthropic meaning generation HTTP error: ${response.status} - ${errorText}`);
         throw new Error(`Anthropic API error: ${response.status}`);
       }
 
@@ -441,6 +435,47 @@ class AnthropicProvider implements AIProvider {
       return null;
     } catch (error) {
       console.error('Anthropic meaning generation error:', error);
+      throw error;
+    }
+  }
+
+  isRateLimitError(error: any): boolean {
+    const errorStr = String(error).toLowerCase();
+    return errorStr.includes('rate limit') || errorStr.includes('429') || errorStr.includes('quota');
+  }
+}
+
+class GeminiProvider implements AIProvider {
+  name = 'Gemini';
+
+  constructor(private apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async translateText(text: string, targetLanguage: LanguageCode): Promise<string | null> {
+    try {
+      const geminiService = getGeminiService(this.apiKey);
+      const result = await geminiService.translateText(text, targetLanguage);
+      if (result) {
+        return result;
+      }
+      throw new Error('Gemini returned empty translation');
+    } catch (error) {
+      console.error('Gemini translation error:', error);
+      throw error;
+    }
+  }
+
+  async generateMeaning(quote: string, language: LanguageCode): Promise<string | null> {
+    try {
+      const geminiService = getGeminiService(this.apiKey);
+      const result = await geminiService.generateMeaning(quote, language);
+      if (result) {
+        return result;
+      }
+      throw new Error('Gemini returned empty meaning');
+    } catch (error) {
+      console.error('Gemini meaning generation error:', error);
       throw error;
     }
   }
@@ -482,6 +517,12 @@ export class MultiProviderAIService {
     if (env.ANTHROPIC_API_KEY) {
       this.providers.push(new AnthropicProvider(env.ANTHROPIC_API_KEY));
       console.log('Anthropic provider initialized');
+    }
+
+    // Gemini (always available as fallback)
+    if (env.GEMINI_API_KEY) {
+      this.providers.push(new GeminiProvider(env.GEMINI_API_KEY));
+      console.log('Gemini provider initialized');
     }
 
     if (this.providers.length === 0) {

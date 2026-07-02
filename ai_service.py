@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional, List
 from abc import ABC, abstractmethod
 import httpx
+from gemini_service import get_gemini_service
 
 logger = logging.getLogger(__name__)
 
@@ -89,21 +90,7 @@ Text to translate:
         language_names = {"uz": "Uzbek", "ru": "Russian", "en": "English"}
         lang_name = language_names.get(language, language)
         
-        prompt = f"""Explain the meaning of the following quote in {lang_name}.
-
-Requirements:
-- Explain the quote simply and clearly
-- Keep the explanation concise (2-3 sentences)
-- Focus on practical life lessons
-- Use {lang_name} language
-- Avoid long essays or academic language
-
-Quote:
-{quote}
-
-Provide the explanation in this format:
-Meaning:
-"Your explanation here" """
+        prompt = f"Explain this quote in {lang_name} in 2-3 sentences: {quote}"
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -131,6 +118,9 @@ Meaning:
                 
                 return None
                 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Groq meaning generation HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Groq API error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"Groq meaning generation error: {e}")
             raise
@@ -142,7 +132,7 @@ class CohereProvider(AIProvider):
     def __init__(self, api_key: str):
         super().__init__(api_key)
         self.base_url = "https://api.cohere.ai/v1"
-        self.model = "command-r-plus"
+        self.model = "command"
     
     async def translate_text(self, text: str, target_language: str) -> Optional[str]:
         language_names = {"uz": "Uzbek", "ru": "Russian", "en": "English"}
@@ -216,6 +206,9 @@ class CohereProvider(AIProvider):
                 
                 return None
                 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Cohere meaning generation HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Cohere API error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"Cohere meaning generation error: {e}")
             raise
@@ -297,6 +290,9 @@ class OpenAIProvider(AIProvider):
                 
                 return None
                 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"OpenAI meaning generation HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"OpenAI API error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"OpenAI meaning generation error: {e}")
             raise
@@ -308,7 +304,7 @@ class AnthropicProvider(AIProvider):
     def __init__(self, api_key: str):
         super().__init__(api_key)
         self.base_url = "https://api.anthropic.com/v1"
-        self.model = "claude-3-haiku-20240307"
+        self.model = "claude-3-5-haiku-20241022"
     
     async def translate_text(self, text: str, target_language: str) -> Optional[str]:
         language_names = {"uz": "Uzbek", "ru": "Russian", "en": "English"}
@@ -380,8 +376,41 @@ class AnthropicProvider(AIProvider):
                 
                 return None
                 
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Anthropic meaning generation HTTP error: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Anthropic API error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"Anthropic meaning generation error: {e}")
+            raise
+
+
+class GeminiProvider(AIProvider):
+    """Gemini API provider using existing gemini_service."""
+
+    def __init__(self, api_key: str):
+        super().__init__(api_key)
+        self.gemini_service = get_gemini_service()
+
+    async def translate_text(self, text: str, target_language: str) -> Optional[str]:
+        """Translate text using Gemini service."""
+        try:
+            result = await self.gemini_service.translate_text(text, target_language)
+            if result:
+                return result
+            raise Exception("Gemini returned empty translation")
+        except Exception as e:
+            logger.error(f"Gemini translation error: {e}")
+            raise
+
+    async def generate_meaning(self, quote: str, language: str) -> Optional[str]:
+        """Generate meaning using Gemini service."""
+        try:
+            result = await self.gemini_service.generate_meaning(quote, language)
+            if result:
+                return result
+            raise Exception("Gemini returned empty meaning")
+        except Exception as e:
+            logger.error(f"Gemini meaning generation error: {e}")
             raise
 
 
@@ -395,34 +424,40 @@ class MultiProviderAIService:
     
     def _initialize_providers(self):
         """Initialize all available providers from environment variables."""
-        
+
         # Groq
         groq_key = os.getenv("GROQ_API_KEY")
         if groq_key:
             self.providers.append(GroqProvider(groq_key))
             logger.info("Groq provider initialized")
-        
+
         # Cohere
         cohere_key = os.getenv("COHERE_API_KEY")
         if cohere_key:
             self.providers.append(CohereProvider(cohere_key))
             logger.info("Cohere provider initialized")
-        
+
         # OpenAI
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
             self.providers.append(OpenAIProvider(openai_key))
             logger.info("OpenAI provider initialized")
-        
+
         # Anthropic
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
         if anthropic_key:
             self.providers.append(AnthropicProvider(anthropic_key))
             logger.info("Anthropic provider initialized")
-        
+
+        # Gemini (always available as fallback)
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            self.providers.append(GeminiProvider(gemini_key))
+            logger.info("Gemini provider initialized")
+
         if not self.providers:
             raise ValueError("No AI providers configured. Please set at least one API key.")
-        
+
         logger.info(f"Initialized {len(self.providers)} AI providers")
     
     def _get_next_provider(self) -> AIProvider:

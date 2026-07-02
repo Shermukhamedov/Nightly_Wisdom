@@ -778,7 +778,7 @@ async def handle_inline_query(inline_query: InlineQuery):
         # Format content with blockquote
         formatted_content = f"<blockquote>{content}</blockquote>"
         
-        # Create inline result with the quote content and action buttons
+        # Create inline result with the quote content (no buttons for inline search)
         result = InlineQueryResultArticle(
             id=str(message_id),
             title=display_content,
@@ -786,8 +786,7 @@ async def handle_inline_query(inline_query: InlineQuery):
             input_message_content=InputTextMessageContent(
                 message_text=formatted_content,
                 parse_mode="HTML"
-            ),
-            reply_markup=get_action_keyboard(language)
+            )
         )
         inline_results.append(result)
         

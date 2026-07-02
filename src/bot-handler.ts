@@ -532,8 +532,7 @@ export class BotHandler {
           input_message_content: {
             message_text: formattedContent,
             parse_mode: 'HTML'
-          },
-          reply_markup: this.getActionKeyboard()
+          }
         };
       });
 
